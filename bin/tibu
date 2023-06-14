@@ -1,0 +1,37 @@
+#! ruby
+require 'csv'
+require 'time'
+
+data = CSV.read(File.absolute_path(ARGV[0], Dir.pwd))
+
+def calculate_row_minutes(row)
+  from = Time.parse(row[0])
+  to = Time.parse(row[1])
+  minutes = (to - from) / 60
+  raise "Start time can't be after end time" if minutes.negative?
+  raise "Start time can't be equal to end time" if minutes == 0
+  minutes
+end
+
+def hours_and_minutes_str(minutes)
+  hours = (minutes / 60).floor
+  "#{'%02d' % hours}:#{'%02d' % (minutes - (60 * hours))}"
+end
+
+result = {}
+data.each do |row|
+  result[row[2].upcase.strip!] ||= []
+  result[row[2].upcase.strip!] << calculate_row_minutes(row)
+end
+
+total_minutes = 0
+
+puts "\n[Time]"
+result.each do |identifier, minute_arr|
+  total_minutes = total_minutes + minute_arr.sum
+  puts "#{identifier} (#{hours_and_minutes_str(minute_arr.sum)})"
+  minute_arr.each { |minutes| puts "  " + hours_and_minutes_str(minutes) }
+  puts
+end
+
+puts "Total time: #{hours_and_minutes_str(total_minutes)}"
