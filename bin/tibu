@@ -23,6 +23,7 @@ data.each do |row|
   result[row[2].upcase.strip!] ||= []
   result[row[2].upcase.strip!] << calculate_row_minutes(row)
 end
+result = result.sort.to_h
 
 total_minutes = 0
 
