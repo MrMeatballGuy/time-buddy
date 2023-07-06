@@ -36,15 +36,17 @@ def hours_and_minutes_str(minutes)
   time_str(hours, minutes - (60 * hours))
 end
 
-data = nil
-begin
-  data = CSV.read(File.absolute_path(ARGV[0], Dir.pwd))
-rescue StandardError
-  puts_err("File does not exist or it is invalid")
+def read_data
+  begin
+    data = CSV.read(File.absolute_path(ARGV[0], Dir.pwd))
+  rescue StandardError
+    raise "File does not exist or it is invalid"
+  end
+  data
 end
 
-begin
-  return if data.nil?
+def map_data
+  data = read_data
   result = {}
   data.each_with_index do |row|
     raise "A task identifier must be present in the third column in all rows" if row[2].nil?
@@ -57,13 +59,17 @@ begin
       minutes: calculate_row_minutes(row)
     }
   end
-  result = result.sort.to_h
+  result.sort.to_h
+end
+
+begin
+  data = map_data
 
   total_minutes = 0
 
   output = []
   output << "\n[Time]"
-  result.each do |identifier, time_info|
+  data.each do |identifier, time_info|
     current_minutes = time_info.sum { |h| h[:minutes] }
     total_minutes = total_minutes + current_minutes
     output << "#{identifier} | #{hours_and_minutes_str(current_minutes)}"
