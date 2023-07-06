@@ -4,15 +4,6 @@ require 'time'
 require 'optparse'
 require 'fileutils'
 
-options = {}
-OptionParser.new do |opts|
-  opts.banner = "Usage: tibu [options] [path]"
-
-  opts.on("-c", "--commit", "Commit time to history") do |c|
-    options[:commit] = c
-  end
-end.parse!
-
 def puts_err(message)
   STDERR.puts "\e[31m#{message}\e[0m"
 end
@@ -36,17 +27,16 @@ def hours_and_minutes_str(minutes)
   time_str(hours, minutes - (60 * hours))
 end
 
-def read_data
+def read_data(path)
   begin
-    data = CSV.read(File.absolute_path(ARGV[0], Dir.pwd))
+    data = CSV.read(File.absolute_path(path, Dir.pwd))
   rescue StandardError
     raise "File does not exist or it is invalid"
   end
   data
 end
 
-def map_data
-  data = read_data
+def map_data(data)
   result = {}
   data.each_with_index do |row|
     raise "A task identifier must be present in the third column in all rows" if row[2].nil?
@@ -62,9 +52,7 @@ def map_data
   result.sort.to_h
 end
 
-begin
-  data = map_data
-
+def generate_output(data)
   total_minutes = 0
 
   output = []
@@ -80,12 +68,25 @@ begin
   end
 
   output << "Total time: #{hours_and_minutes_str(total_minutes)}"
+end
 
-  output.each { |s| puts s }
+begin
+  options = {}
+  OptionParser.new do |opts|
+    opts.banner = "Usage: tibu [options] [file.csv]"
+
+    opts.on("-c", "--commit", "Commit time to history") do |c|
+      options[:commit] = c
+    end
+  end.parse!
+
+  file_path = ARGV[0]
+  generate_output(map_data(read_data(file_path))).each { |str| puts str }
 
   if options[:commit]
-    FileUtils.mkdir_p("#{Dir.home}/.tibu/history")
-    FileUtils.cp(File.absolute_path(ARGV[0], Dir.pwd), "#{Dir.home}/.tibu/history/#{DateTime.now.strftime('%Y-%m-%d')}.csv")
+    history_path = "#{Dir.home}/.tibu/history"
+    FileUtils.mkdir_p(history_path)
+    FileUtils.cp(File.absolute_path(ARGV[0], Dir.pwd), "#{history_path}/#{DateTime.now.strftime('%Y-%m-%d')}.csv")
   end
 rescue StandardError => e
   puts_err(e.message)
