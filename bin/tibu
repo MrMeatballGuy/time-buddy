@@ -4,70 +4,82 @@ require 'time'
 require 'optparse'
 require 'fileutils'
 
-def puts_err(message)
-  STDERR.puts "\e[31m#{message}\e[0m"
-end
-
-def calculate_row_minutes(row)
-  raise "A start time and end time must be present in the first and second column of all rows" if row[0].nil? || row[1].nil?
-  from = Time.parse(row[0])
-  to = Time.parse(row[1])
-  minutes = (to - from) / 60
-  raise "Start time can't be after end time" if minutes.negative?
-  raise "Start time can't be equal to end time" if minutes == 0
-  minutes
-end
-
-def time_str(hour, minute)
-  "#{'%02d' % (hour)}:#{'%02d' % (minute)}"
-end
-
-def hours_and_minutes_str(minutes)
-  hours = (minutes / 60).floor
-  time_str(hours, minutes - (60 * hours))
-end
-
-def read_data(path)
-  begin
-    data = CSV.read(File.absolute_path(path, Dir.pwd))
-  rescue StandardError
-    raise "File does not exist or it is invalid"
+class TimeUtil
+  def self.prettify_time(hour, minute)
+    "#{'%02d' % (hour)}:#{'%02d' % (minute)}"
   end
-  data
-end
 
-def map_data(data)
-  result = {}
-  data.each_with_index do |row|
-    raise "A task identifier must be present in the third column in all rows" if row[2].nil?
-    from = row[0].split(":")
-    to = row[1].split(":")
-    result[row[2].upcase.strip!] ||= []
-    result[row[2].upcase.strip!] << {
-      from: time_str(from[0].to_i, from[1].to_i),
-      to: time_str(to[0].to_i, to[1].to_i),
-      minutes: calculate_row_minutes(row)
-    }
+  def self.minutes_to_time_str(minutes)
+    hours = (minutes / 60).floor
+    TimeUtil.prettify_time(hours, minutes - (60 * hours))
   end
-  result.sort.to_h
+
+  def self.difference_in_minutes(from, to)
+    from_time = Time.parse(from)
+    to_time = Time.parse(to)
+    minutes = (to_time - from_time) / 60
+    raise "Start time can't be after end time" if minutes.negative?
+    raise "Start time can't be equal to end time" if minutes == 0
+    minutes
+  end
 end
 
-def generate_output(data)
-  total_minutes = 0
-
-  output = []
-  output << "\n[Time]"
-  data.each do |identifier, time_info|
-    current_minutes = time_info.sum { |h| h[:minutes] }
-    total_minutes = total_minutes + current_minutes
-    output << "#{identifier} | #{hours_and_minutes_str(current_minutes)}"
-    time_info.each do |info|
-      output << "  #{info[:from]}-#{info[:to]} | #{hours_and_minutes_str(info[:minutes])}"
+class DataUtil
+  def self.read_data(path)
+    begin
+      data = CSV.read(File.absolute_path(path, Dir.pwd))
+    rescue StandardError
+      raise "File does not exist or it is invalid"
     end
-    output << "\n"
+    data
   end
 
-  output << "Total time: #{hours_and_minutes_str(total_minutes)}"
+  def self.map_data(data)
+    result = {}
+    data.each do |row|
+      raise "A task identifier must be present in the third column in all rows" if row[2].nil?
+      raise "A start time and end time must be present in the first and second column of all rows" if row[0].nil? || row[1].nil?
+      identifier = row[2].strip.upcase
+      from = row[0].strip.split(":").map{|str| str.to_i}
+      to = row[1].strip.split(":").map{|str| str.to_i}
+
+      result[identifier] ||= []
+      result[identifier] << {
+        from: TimeUtil.prettify_time(from[0], from[1]),
+        to: TimeUtil.prettify_time(to[0], to[1]),
+        minutes: TimeUtil.difference_in_minutes(row[0], row[1])
+      }
+    end
+    result.sort.to_h
+  end
+end
+
+class OutputUtil
+  def self.generate_output(data)
+    total_minutes = 0
+
+    output = []
+    output << "\n[Time]"
+    data.each do |identifier, time_info|
+      current_minutes = time_info.sum { |h| h[:minutes] }
+      total_minutes = total_minutes + current_minutes
+      output << "#{identifier} | #{TimeUtil.minutes_to_time_str(current_minutes)}"
+      time_info.each do |info|
+        output << "  #{info[:from]} - #{info[:to]} | #{TimeUtil.minutes_to_time_str(info[:minutes])}"
+      end
+      output << "\n"
+    end
+
+    output << "Total time: #{TimeUtil.minutes_to_time_str(total_minutes)}"
+  end
+
+  def self.render(file_path)
+    OutputUtil.generate_output(
+      DataUtil.map_data(
+        DataUtil.read_data(file_path)
+      )
+    ).each { |str| puts str }
+  end
 end
 
 begin
@@ -80,8 +92,7 @@ begin
     end
   end.parse!
 
-  file_path = ARGV[0]
-  generate_output(map_data(read_data(file_path))).each { |str| puts str }
+  OutputUtil.render(ARGV[0])
 
   if options[:commit]
     history_path = "#{Dir.home}/.tibu/history"
@@ -89,5 +100,5 @@ begin
     FileUtils.cp(File.absolute_path(ARGV[0], Dir.pwd), "#{history_path}/#{DateTime.now.strftime('%Y-%m-%d')}.csv")
   end
 rescue StandardError => e
-  puts_err(e.message)
+  STDERR.puts "\e[31m#{e.message}\e[0m"
 end
