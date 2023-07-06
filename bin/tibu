@@ -1,6 +1,17 @@
 #! ruby
 require 'csv'
 require 'time'
+require 'optparse'
+require 'fileutils'
+
+options = {}
+OptionParser.new do |opts|
+  opts.banner = "Usage: tibu [options] [path]"
+
+  opts.on("-c", "--commit", "Commit time to history") do |c|
+    options[:commit] = c
+  end
+end.parse!
 
 def puts_err(message)
   STDERR.puts "\e[31m#{message}\e[0m"
@@ -50,18 +61,26 @@ begin
 
   total_minutes = 0
 
-  puts "\n[Time]"
+  output = []
+  output << "\n[Time]"
   result.each do |identifier, time_info|
     current_minutes = time_info.sum { |h| h[:minutes] }
     total_minutes = total_minutes + current_minutes
-    puts "#{identifier} | #{hours_and_minutes_str(current_minutes)}"
+    output << "#{identifier} | #{hours_and_minutes_str(current_minutes)}"
     time_info.each do |info|
-      puts "  #{info[:from]}-#{info[:to]} | #{hours_and_minutes_str(info[:minutes])}"
+      output << "  #{info[:from]}-#{info[:to]} | #{hours_and_minutes_str(info[:minutes])}"
     end
-    puts
+    output << "\n"
   end
 
-  puts "Total time: #{hours_and_minutes_str(total_minutes)}"
+  output << "Total time: #{hours_and_minutes_str(total_minutes)}"
+
+  output.each { |s| puts s }
+
+  if options[:commit]
+    FileUtils.mkdir_p("#{Dir.home}/.tibu/history")
+    FileUtils.cp(File.absolute_path(ARGV[0], Dir.pwd), "#{Dir.home}/.tibu/history/#{DateTime.now.strftime('%Y-%m-%d')}.csv")
+  end
 rescue StandardError => e
   puts_err(e.message)
 end
