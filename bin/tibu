@@ -2,10 +2,12 @@
 require 'csv'
 require 'time'
 
-data = CSV.read(File.absolute_path(ARGV[0], Dir.pwd))
+def puts_err(message)
+  STDERR.puts "\e[31m#{message}\e[0m"
+end
 
 def calculate_row_minutes(row)
-  raise "A start time and end time must be present in the first and second column in all rows" if row[0].nil? || row[1].nil?
+  raise "A start time and end time must be present in the first and second column of all rows" if row[0].nil? || row[1].nil?
   from = Time.parse(row[0])
   to = Time.parse(row[1])
   minutes = (to - from) / 60
@@ -14,30 +16,52 @@ def calculate_row_minutes(row)
   minutes
 end
 
+def time_str(hour, minute)
+  "#{'%02d' % (hour)}:#{'%02d' % (minute)}"
+end
+
 def hours_and_minutes_str(minutes)
   hours = (minutes / 60).floor
-  "#{'%02d' % hours}:#{'%02d' % (minutes - (60 * hours))}"
+  time_str(hours, minutes - (60 * hours))
 end
+
+data = nil
 begin
+  data = CSV.read(File.absolute_path(ARGV[0], Dir.pwd))
+rescue StandardError
+  puts_err("File does not exist or it is invalid")
+end
+
+begin
+  return if data.nil?
   result = {}
-  data.each do |row|
+  data.each_with_index do |row|
     raise "A task identifier must be present in the third column in all rows" if row[2].nil?
+    from = row[0].split(":")
+    to = row[1].split(":")
     result[row[2].upcase.strip!] ||= []
-    result[row[2].upcase.strip!] << calculate_row_minutes(row)
+    result[row[2].upcase.strip!] << {
+      from: time_str(from[0].to_i, from[1].to_i),
+      to: time_str(to[0].to_i, to[1].to_i),
+      minutes: calculate_row_minutes(row)
+    }
   end
   result = result.sort.to_h
 
   total_minutes = 0
 
   puts "\n[Time]"
-  result.each do |identifier, minute_arr|
-    total_minutes = total_minutes + minute_arr.sum
-    puts "#{identifier} (#{hours_and_minutes_str(minute_arr.sum)})"
-    minute_arr.each { |minutes| puts "  " + hours_and_minutes_str(minutes) }
+  result.each do |identifier, time_info|
+    current_minutes = time_info.sum { |h| h[:minutes] }
+    total_minutes = total_minutes + current_minutes
+    puts "#{identifier} | #{hours_and_minutes_str(current_minutes)}"
+    time_info.each do |info|
+      puts "  #{info[:from]}-#{info[:to]} | #{hours_and_minutes_str(info[:minutes])}"
+    end
     puts
   end
 
   puts "Total time: #{hours_and_minutes_str(total_minutes)}"
 rescue StandardError => e
-  STDERR.puts "\e[31m#{e.message}\e[0m"
+  puts_err(e.message)
 end
